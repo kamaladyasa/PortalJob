@@ -8,8 +8,18 @@ import re
 from datetime import datetime
 from sqlalchemy import or_, and_, func
 from sqlalchemy.sql import label
+from flask_cors import CORS, cross_origin
+
+cors_config = {
+    "origins": ["http://127.0.0.1:5001"],
+    "methods": ["GET", "POST", "PUT", "DELETE"]
+}
 
 app = Flask(__name__)
+CORS(app, resources={
+    r"/*": cors_config
+})
+
 db = SQLAlchemy()
 bcrypt = Bcrypt(app)
 
@@ -179,15 +189,15 @@ def create_user():
     }, 201
 
 ###### UPDATE USER ######
-@app.route('/users/<id>/', methods=['PUT'])
-def update_user(id):
+@app.route('/users/', methods=['PUT'])
+def update_user():
     email, password = login()
     us = Users.query.filter_by(email=email).first()
     if us is None or not bcrypt.check_password_hash(us.password, password):
         return {'error': 'Login Error'}, 401
 
     data = request.get_json()
-    user = Users.query.filter_by(id=id).first_or_404()
+    user = Users.query.filter_by(id=us.id).first_or_404()
     
     if 'email' in data:
         pattern = '^(\w|\.|\_|\-)+[@](\w|\_|\-|\.)+[.]\w{2,3}$'
@@ -256,6 +266,7 @@ def get_user_companies(id):
     c = Company.query.filter_by(email=email).first()
     if c is None or not bcrypt.check_password_hash(c.password, password):
         return {'error': 'Login Error'}, 401
+    
     print(id)
     return jsonify([
         {
@@ -328,15 +339,15 @@ def create_company():
     }, 201
 
 ###### UPDATE COMPANY ######
-@app.route('/companies/<id>/', methods=['PUT'])
-def update_company(id):
+@app.route('/companies/', methods=['PUT'])
+def update_company():
     email, password = login()
     c = Company.query.filter_by(email=email).first_or_404()
     if c is None and not bcrypt.check_password_hash(c.password, password):
         return {'error': 'Login Error'}, 401
 
     data = request.get_json()
-    company = Company.query.filter_by(id=id).first_or_404()
+    company = Company.query.filter_by(id=c.id).first_or_404()
     
     if 'email' in data:
         pattern = '^(\w|\.|\_|\-)+[@](\w|\_|\-|\.)+[.]\w{2,3}$'
@@ -399,7 +410,7 @@ def create_education():
         return {'error': 'Login Error'}, 401
     
     data = request.get_json()
-    if 'user_id' not in data: return {'message': 'User id must given'}, 400
+    # if 'user_id' not in data: return {'message': 'User id must given'}, 400
     if 'level_education' not in data: return {'message': 'Level education not given'}, 400
     if 'major' not in data: return {'message': 'Major not given'}, 400
     if 'univ_name' not in data: return {'message': 'University name not given'}, 400
@@ -408,7 +419,7 @@ def create_education():
     if 'gpa' not in data: return {'message': 'GPA not given'}, 400
 
     edu = EducationDetail(
-        user_id = data['user_id'],
+        user_id = u.id,
         last_education = data['level_education'],
         major = data['major'],
         univ_name = data['univ_name'],
@@ -446,7 +457,7 @@ def create_experience():
         return {'error': 'Login Error'}, 401
     
     data = request.get_json()
-    if 'user_id' not in data: return {'message': 'User id must given'}, 400
+    # if 'user_id' not in data: return {'message': 'User id must given'}, 400
     if 'job_title' not in data: return {'message': 'Job title not given'}, 400
     if 'company_name' not in data: return {'message': 'Company name not given'}, 400
     if 'job_location_city' not in data: return {'message': 'Job location city not given'}, 400
@@ -455,7 +466,7 @@ def create_experience():
     if 'end_date' not in data: return {'message': 'End date not given'}, 400
     
     exp = ExperienceDetail(
-        user_id = data['user_id'],
+        user_id = u.id,
         job_title = data['job_title'],
         company_name = data['company_name'],
         job_location_city = data['job_location_city'],
@@ -493,8 +504,8 @@ def create_job_post():
     
     data = request.get_json()
     jp = JobPost(
+        company_id = c.id,
         title = data['title'],
-        company_id = data['company_id'],
         location_city = data['location_city'],
         job_description = data['job_description'],
         specialization = data['specialization']
@@ -586,10 +597,10 @@ def update_job_company(id):
 ###### GET ALL AVAILABLE JOBS USER ######
 @app.route('/users/job-lists/')
 def get_jobs_users():
-    email, password = login()
-    u = Users.query.filter_by(email=email).first()
-    if u is None or not bcrypt.check_password_hash(u.password, password):
-        return {'error': 'Login Error'}, 401
+    # email, password = login()
+    # u = Users.query.filter_by(email=email).first()
+    # if u is None or not bcrypt.check_password_hash(u.password, password):
+    #     return {'error': 'Login Error'}, 401
     
     return jsonify([
         {
@@ -607,6 +618,32 @@ def get_jobs_users():
             }
         } for jp in JobPost.query.filter_by(is_active = True)
     ])
+
+###### FILTERING JOB USER BASED TITLE or SPECIALIZATION, LOCATION ######
+@app.route('/users/filter-job-lists/')
+def get_filter():
+    data = request.get_json()
+    dbQuery = db.session.query(JobPost)
+    if (data['keywords'] != "" and data['location_city'] == ""):
+        dbQuery = dbQuery.filter(or_(JobPost.title.match(data['keywords']), JobPost.specialization.match(data['keywords'])))
+    elif (data["keywords"] == "" and data['location_city'] != ""):
+        dbQuery = dbQuery.filter(JobPost.location_city.match(data['location_city']))
+    elif (data['keywords'] != "" and data['location_city'] != ""):
+        dbQuery = dbQuery.filter(JobPost.title.match(data['keywords']), JobPost.location_city.match(data['location_city']))
+    else:
+        dbQuery = dbQuery.all()
+    return jsonify([
+        {
+        'id': jp.id, 'title': jp.title, 'created_date': jp.created_date, 'is_active': jp.is_active,
+        'job_description': jp.job_description, 'location_city': jp.location_city, 'specialization': jp.specialization,
+        'company': {
+            'id': jp.jpcom.id,
+            'company_name': jp.jpcom.company_name,
+            'website': jp.jpcom.website
+            }
+        } for jp in dbQuery
+    ])
+
 
 ###### SEARCH JOB USER BASED TITLE ######
 @app.route('/users/job-lists/title/<id>')
@@ -704,13 +741,13 @@ def apply_job():
             'message': 'User id and job post id must given'
         }), 400
     
-    f = JobPostActivity.query.filter_by(user_id=data['user_id'], job_post_id=data['job_post_id'])
+    f = JobPostActivity.query.filter_by(user_id=u.id, job_post_id=data['job_post_id'])
     for i in f:
         if i is not None:
             return {'messages': 'You have applied this job'}, 400
 
     ap = JobPostActivity(
-        user_id = data['user_id'],
+        user_id = u.id,
         job_post_id = data['job_post_id']
     )
     db.session.add(ap)
@@ -827,3 +864,43 @@ def get_jobs_count_company():
             '6. total_applicant': JobPostActivity.query.filter_by(job_post_id=jp.id).count()
         } for jp in JobPost.query.all()
     ])
+
+@app.route('/company/login/', methods=['POST'])
+def company_login():
+    res = request.headers.get("Authorization")
+    a = res.split()
+    u = base64.b64decode(a[-1]).decode('utf-8')
+    mail, passw = u.split(":")
+
+    c = Company.query.filter_by(email=mail).first()
+    if c is None or not bcrypt.check_password_hash(c.password, passw):
+        return {'error': 'Login Error'}, 401
+
+    else:
+        return {
+        'email' : mail
+        }
+
+@app.route('/user/login/', methods=['POST'])
+def user_login():
+    res = request.headers.get("Authorization")
+    a = res.split()
+    u = base64.b64decode(a[-1]).decode('utf-8')
+    mail, passw = u.split(":")
+
+    c = Users.query.filter_by(email=mail).first()
+    if c is None or not bcrypt.check_password_hash(c.password, passw):
+        return {'error': 'Login Error'}, 401
+
+    else:
+        return {
+        'email' : mail
+        }
+
+
+@app.after_request
+def after_request(response):
+  response.headers.add('Access-Control-Allow-Origin', '*')
+  response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+  response.headers.add('Access-Control-Allow-Methods', 'POST,GET,PUT,DELETE,OPTION')
+  return response
