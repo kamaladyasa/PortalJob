@@ -116,6 +116,17 @@ def get_users():
         } for u in Users.query.all()
     ])
 
+###### GET USER PROFILE ######
+@app.route('/users/profile/')
+def user_profile():
+    data = request.headers['email']
+    u = Users.query.filter_by(email=data).first_or_404()
+    return {
+        'id': u.id, 'password': u.password, 'email': u.email, 'first_name': u.first_name,
+        'last_name': u.last_name, 'date_of_birth': u.date_of_birth, 'gender': u.gender,
+        'contact_number': u.contact_number, 'registration_date': u.registration_date
+    }
+
 @app.route('/users/<id>/')
 def get_user(id):
     print(id)
@@ -191,13 +202,9 @@ def create_user():
 ###### UPDATE USER ######
 @app.route('/users/', methods=['PUT'])
 def update_user():
-    email, password = login()
-    us = Users.query.filter_by(email=email).first()
-    if us is None or not bcrypt.check_password_hash(us.password, password):
-        return {'error': 'Login Error'}, 401
-
+    c = request.headers['email']
+    user = Users.query.filter_by(email=c).first_or_404()
     data = request.get_json()
-    user = Users.query.filter_by(id=us.id).first_or_404()
     
     if 'email' in data:
         pattern = '^(\w|\.|\_|\-)+[@](\w|\_|\-|\.)+[.]\w{2,3}$'
@@ -259,13 +266,25 @@ def get_companies():
         } for c in Company.query.all()
     ])
 
+###### GET COMPANY PROFILE ######
+@app.route('/companies/profile/')
+def company_profile():
+    data = request.headers['email']
+    c = Company.query.filter_by(email=data).first_or_404()
+    return {
+        'id': c.id, 'password': c.password, 'email': c.email, 'company_name': c.company_name,
+        'website': c.website, 'profile_description': c.profile_description,
+        'contact_number': c.contact_number, 'address': c.address, 'city': c.city, 'registration_date': c.registration_date
+    }
+
+
 ###### SEARCH USER BY NAME FOR COMPANY ######
 @app.route('/companies/search-users/<id>')
 def get_user_companies(id):
-    email, password = login()
-    c = Company.query.filter_by(email=email).first()
-    if c is None or not bcrypt.check_password_hash(c.password, password):
-        return {'error': 'Login Error'}, 401
+    # email, password = login()
+    # c = Company.query.filter_by(email=email).first()
+    # if c is None or not bcrypt.check_password_hash(c.password, password):
+    #     return {'error': 'Login Error'}, 401
     
     print(id)
     return jsonify([
@@ -341,13 +360,9 @@ def create_company():
 ###### UPDATE COMPANY ######
 @app.route('/companies/', methods=['PUT'])
 def update_company():
-    email, password = login()
-    c = Company.query.filter_by(email=email).first_or_404()
-    if c is None and not bcrypt.check_password_hash(c.password, password):
-        return {'error': 'Login Error'}, 401
-
+    c = request.headers['email']
+    company = Company.query.filter_by(email=c).first_or_404()
     data = request.get_json()
-    company = Company.query.filter_by(id=c.id).first_or_404()
     
     if 'email' in data:
         pattern = '^(\w|\.|\_|\-)+[@](\w|\_|\-|\.)+[.]\w{2,3}$'
@@ -901,6 +916,6 @@ def user_login():
 @app.after_request
 def after_request(response):
   response.headers.add('Access-Control-Allow-Origin', '*')
-  response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+  response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,email')
   response.headers.add('Access-Control-Allow-Methods', 'POST,GET,PUT,DELETE,OPTION')
   return response
